@@ -10,8 +10,8 @@ if [ $# -ne 2 ]; then
     exit 1
 fi
 
-source_dir=$1;
-build_dir=$2;
+source_dir="$1";
+build_dir="$2";
 
 # Make sure the build directory isn't the current directory
 if [ "$build_dir" = "." ]; then
@@ -29,17 +29,32 @@ echo "smol build is building..."
 echo
 
 # Create (if needed) and then clear out the build directory
-mkdir -p $2 && find $2 -mindepth 1 -depth -exec rm -rf {} +
+mkdir -p "$2" && find "$2" -mindepth 1 -depth -exec rm -rf {} +
+
+escape_for_bash_replacement() {
+    local content
+    if [ -f "$1" ]; then
+        content=$(<"$1")   # read file content
+    else
+        content="$1"       # or take string directly
+    fi
+    # Escape backslashes first
+    content="${content//\\/\\\\}"
+    # Escape ampersands
+    content="${content//&/\\&}"
+    printf '%s' "$content"
+}
 
 descend() { # param1: recursive directory | param2: template_string_so_far
 
-	local template=$2
+	# Handle the template first if there is one
+	local template="$2"
 	if [[ -f "$1/smol_template.html" ]]; then
 		echo " [templating] $1/smol_template.html"
 		if [[ -z "$template" ]]; then
-		    template=$(cat $1/smol_template.html)
+		    template=$(<"$1/smol_template.html")
 	    else
-	    	template="${template//<smol_content\/>/$(cat $1/smol_template.html)}"
+	    	template="${template/<smol_content\/>/$(<"$1/smol_template.html")}"
 		fi
 	fi
 
@@ -51,7 +66,8 @@ descend() { # param1: recursive directory | param2: template_string_so_far
     		if [[ ! "$item" =~ ^.*smol_template\.html$ ]]; then
 			    local output_path="$build_dir/${item#*/}"
 			    echo " [building]   $item -> $output_path"
-		    	output_data="${template//<smol_content\/>/$(cat $item)}"
+			    escaped_content=$(escape_for_bash_replacement "$item")
+		    	output_data="${template/<smol_content\/>/$escaped_content}"
 			    mkdir -p $(dirname "$output_path")
 		    	printf '%s' "$output_data" > "$output_path"
 	    	fi
@@ -59,11 +75,11 @@ descend() { # param1: recursive directory | param2: template_string_so_far
 			local output_path="$build_dir/${item#*/}"
 			echo " [copying]    $item -> $output_path"
 			mkdir -p $(dirname "$output_path")
-			cp $item $output_path
+			cp "$item" "$output_path"
         fi
 	done
 }
 
-descend $source_dir ""
+descend "$source_dir" ""
 echo
 echo "smol build is done!"
